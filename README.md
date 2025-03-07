@@ -9,8 +9,8 @@ To get started with this project, follow these steps:
 1. **Clone the Repository**
 
    ```sh
-   git clone <repository-url>
-   cd <repository-name>
+   git clone https://github.com/akashelhance/file-upload-frontend
+   cd file-upload-frontend
    ```
 
 2. **Install Dependencies**
