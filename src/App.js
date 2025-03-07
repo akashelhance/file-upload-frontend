@@ -1,24 +1,31 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState } from "react";
+import FileUpload from "./components/FileUpload";
+import DataTable from "./components/DataTable";
+import { Container, Card, CardContent, Typography, Box } from "@mui/material";
 
 function App() {
+  const [data, setData] = useState([]);
+  const [columns, setColumns] = useState([]);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Container maxWidth="md" sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Card sx={{ width: "100%", boxShadow: 3, borderRadius: 3 }}>
+        <CardContent>
+          <Typography variant="h4" align="center" fontWeight="bold" gutterBottom>
+            CSV/Excel Upload
+          </Typography>
+
+          <FileUpload setData={setData} setColumns={setColumns} />
+
+   
+          {data.length > 0 && (
+            <Box mt={4}>
+              <DataTable data={data} columns={columns} setColumns={setColumns} />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </Container>
   );
 }
 
