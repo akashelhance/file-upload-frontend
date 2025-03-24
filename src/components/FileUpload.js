@@ -11,10 +11,12 @@ import {
   TableHead,
   TableRow,
   Paper,
+  TextField
 } from "@mui/material";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+
 import * as XLSX from "xlsx";
 import axios from "axios";
+import dayjs from "dayjs"
 
 const REQUIRED_COLUMNS = [
   "Origin Port",
@@ -32,10 +34,40 @@ const FileUpload = () => {
   const [missingColumns, setMissingColumns] = useState([]);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [fileType, setFileType]= useState("");
+
+
+  const validateRow =(row)=>{
+
+    let errors =[];
+
+
+    if (row["Origin Port"] && !/^[A-Za-z\s]+$/.test(row["Origin Port"])) {
+      errors.push(` "Origin Port" contains invalid characters.`);
+    }
+    if (row["Destination Port"] && !/^[A-Za-z\s]+$/.test(row["Destination Port"])) {
+      errors.push(` "Destination Port" contains invalid characters.`);
+    }
+    if(row["Ocean Freight Rate"] && Number(row["Ocean Freight Rate"]) <= 0){
+      errors.push(` "Ocean Freight Rate can not have negative values" `)
+    }
+
+    if (row["Effective Date"] && !dayjs(row["Effective Date"], "YYYY-MM-DD", true).isValid()) {
+      errors.push(` "Effective Date" is not a valid `);
+    }
+
+    return errors.length ? errors.join(" ") : null;
+  }
 
   const handleFileSelect = async (event) => {
     const uploadedFile = event.target.files[0];
     if (!uploadedFile) return;
+
+
+    const fileExt = uploadedFile.name.split(".").pop().toLowerCase();
+    setFileType(fileExt)
+
+
 
     const reader = new FileReader();
     reader.readAsBinaryString(uploadedFile);
@@ -58,9 +90,14 @@ const FileUpload = () => {
         (col) => !fileColumns.includes(col)
       );
 
+      const validatedData = sheetData.map((row)=>({
+        ...row,
+        error: validateRow({...row})
+      }))
+
       setFile(uploadedFile);
       setColumns(fileColumns);
-      setFileData(sheetData);
+      setFileData(validatedData);
       setMissingColumns(missingCols);
 
       if (missingCols.length > 0) {
@@ -71,17 +108,31 @@ const FileUpload = () => {
     };
   };
 
-  const handleDragEnd = (result) => {
-    if (!result.destination) return;
+  // const handleDragEnd = (result) => {
+  //   if (!result.destination) return;
 
-    const newColumns = Array.from(columns);
-    const [movedItem] = newColumns.splice(result.source.index, 1);
-    newColumns.splice(result.destination.index, 0, movedItem);
+  //   const newColumns = Array.from(columns);
+  //   const [movedItem] = newColumns.splice(result.source.index, 1);
+  //   newColumns.splice(result.destination.index, 0, movedItem);
 
-    setColumns(newColumns);
-  };
+  //   setColumns(newColumns);
+  // };
+
+
+  const handleEdit = async (rowIndex, column, value)=>{
+      const updatedData = [...fileData];
+      updatedData[rowIndex][column]=  value
+      updatedData[rowIndex].error = validateRow(updatedData[rowIndex])
+      setFileData(updatedData)
+  }
 
   const handleSubmit = async () => {
+
+    if(fileData.some((row)=> row.error)){
+      setErrorMessage("Fix the Error before submit");
+      return;
+    }
+
     if (!file) {
       setErrorMessage("No file selected!");
       return;
@@ -94,8 +145,35 @@ const FileUpload = () => {
       return;
     }
 
+    let blob;
+
+    if(fileType === "csv"){
+      const csvContent = [
+        columns.join(","), 
+        ...fileData.map((row)=> columns.map((col)=>row[col]).join(",")),
+      ].join("\n")
+
+      blob = new Blob([[csvContent], {type: "text/csv"}])
+    }
+
+    else{
+      const worksheet = XLSX.utils.json_to_sheet(fileData.map(({error, ...row})=> row))
+      console.log({worksheet})
+      const workbook =XLSX.utils.book_new();
+      console.log({workbook})
+      XLSX.utils.book_append_sheet(workbook,worksheet, "New Correct Data")
+
+      const excelBuffer = XLSX.write(workbook, {bookType: "xlsx", type: "array"});
+      console.log({excelBuffer})
+      blob = new Blob([[excelBuffer], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}])
+    }
+    let corrected_data;
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append(
+      "file",
+      new File([blob], fileType === "csv" ? corrected_data.csv : corrected_data.xlsx, {type: blob.type})
+    )
+    
 
     try {
       const response = await axios.post(
@@ -128,54 +206,49 @@ const FileUpload = () => {
 
       {fileData.length > 0 && (
         <Box width="100%" mt={3}>
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <TableContainer component={Paper}>
+         
+         <TableContainer component={Paper}>
               <Table>
                 <TableHead>
-                  <Droppable droppableId="columns" direction="horizontal">
-                    {(provided) => (
-                      <TableRow ref={provided.innerRef} {...provided.droppableProps}>
+                <TableRow>
                         {columns.map((col, index) => (
-                          <Draggable key={col} draggableId={col} index={index}>
-                            {(provided) => (
-                              <TableCell
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                ref={provided.innerRef}
-                                sx={{ fontWeight: "bold", cursor: "grab", background: "#f5f5f5" }}
-                              >
-                                {col}
-                              </TableCell>
-                            )}
-                          </Draggable>
+                            <TableCell
+                            key ={index}
+                            sx={{ fontWeight: "bold", cursor: "grab", background: "#f5f5f5" }}
+                          >
+                            {col}
+                          </TableCell>
                         ))}
-                        {provided.placeholder}
+                        <TableCell>Error....</TableCell>
                       </TableRow>
-                    )}
-                  </Droppable>
                 </TableHead>
                 <TableBody>
-                  {fileData.slice(0, 5).map((row, rowIndex) => (
+                  {fileData.slice(0, 10).map((row, rowIndex) => (
                     <TableRow key={rowIndex}>
                       {columns.map((col, colIndex) => (
-                        <TableCell key={colIndex}>{row[col]}</TableCell>
+                        <TableCell key={colIndex}>
+                          <TextField
+                            value={row[col] || ""}
+                            onChange={(e)=> handleEdit(rowIndex, col, e.target.value)}
+                            size="medium"
+                          />
+                        </TableCell>
                       ))}
+                      <TableCell>{row.error}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
-          </DragDropContext>
-
      
           <Button
             variant="contained"
             color="primary"
             onClick={handleSubmit}
             sx={{ mt: 2 }}
-            disabled={missingColumns.length > 0}
+            disabled={fileData.some((row)=> row.error)}
           >
-            Submit File
+            Create and Submit new file
           </Button>
 
 
